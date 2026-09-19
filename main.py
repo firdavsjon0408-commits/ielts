@@ -14,7 +14,7 @@ dp = Dispatcher()
 users_db = set()
 user_quiz_state = {}
 
-# Asl 10 ta mockdan saralab olingan eng zo'r 5 ta IELTS Reading Mock bazasi
+# 5 ta tanlangan yuqori sifatli IELTS Reading Mock bazasi (har birida 20 tadan savol)
 READING_MOCKS = {
     1: {
         "passage": "<b>IELTS Academic Reading - Mock 1: The Evolution of Architecture & Urban Design</b>\n\nArchitecture has transformed dramatically over the centuries, reflecting technological breakthroughs, cultural shifts, and environmental awareness. Modern skyscrapers utilize sustainable materials, smart energy grids, and advanced aerodynamic designs to withstand extreme weather conditions while optimizing interior climate control.",
