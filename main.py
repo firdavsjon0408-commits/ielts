@@ -6,12 +6,10 @@ import threading
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from groq import Groq
 
 # 1. Tokenlar va sozlamalar
 TOKEN = "8775259780:AAfmt4N-gfVfB1S3KKbrHOJ70ADDJfGQnQ"
-ADMIN_ID = 6773733838
 GROQ_API_KEY = "gsk_caFeIAfnef5RLTh83i79WGdyb3FYvTMAzgQZW0S..."
 
 # Groq mijoji
@@ -39,40 +37,19 @@ def run_http_server():
 # Start komandasi
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    builder = InlineKeyboardBuilder()
-    builder.row(types.InlineKeyboardButton(text="📊 Daraja testlari (A1-C1)", callback_data="tests"))
-    builder.row(types.InlineKeyboardButton(text="✍️ IELTS Essay Checker", callback_data="essay_check"))
-    builder.row(types.InlineKeyboardButton(text="🚀 Coming Soon 2", callback_data="soon"))
-    
     await message.answer(
-        "Assalomu alaykum! Bot va test tizimiga xush kelibsiz. Kerakli bo'limni tanlang:",
-        reply_markup=builder.as_markup()
+        "👋 Assalomu alaykum!\n\n"
+        "Men **IELTS Essay Checker** botiman. Menga istalgan IELTS inshongizni (Task 1 yoki Task 2) yuboring, "
+        "va men uni professional ekzamenator sifatida tahlil qilib, **Band Score**, xatolar va yaxshilangan variantini beraman! ✍️"
     )
 
-@dp.callback_query(F.data == "essay_check")
-async def essay_intro(callback: types.CallbackQuery):
-    await callback.message.answer(
-        "Iltimos, tekshirtirmoqchi bo'lgan IELTS inshongizni (Task 1 yoki Task 2) shu yerga yuboring:"
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "tests")
-async def tests_intro(callback: types.CallbackQuery):
-    await callback.message.answer("Tez orada testlar bo'limi ishga tushadi!")
-    await callback.answer()
-
-@dp.callback_query(F.data == "soon")
-async def soon_intro(callback: types.CallbackQuery):
-    await callback.message.answer("Tez kunda yangi imkoniyatlar qo'shiladi!")
-    await callback.answer()
-
-# Insholarni qabul qilib Groq orqali tekshirish
+# Insholarni qabul qilib Groq (AI) orqali tekshirish
 @dp.message(F.text)
 async def check_essay(message: types.Message):
     if message.text.startswith('/'):
         return
         
-    waiting_msg = await message.answer("⏳ Inshongiz tahlil qilinmoqda, biroz kuting...")
+    waiting_msg = await message.answer("⏳ Inshongiz AI tomonidan tahlil qilinmoqda, biroz kuting...")
     
     try:
         prompt = f"""
@@ -102,16 +79,17 @@ async def check_essay(message: types.Message):
             pass
         await message.answer("❌ Tahlil qilish vaqtida xatolik yuz berdi. Iltimos, birozdan keyin qayta urinib ko'ring.")
 
+# Asosiy ishga tushirish funksiyasi
 async def main():
-    # HTTP serverni alohida oqimda ishga tushiramiz
-    server_thread = threading.Thread(target=run_http_server, daemon=True)
-    server_thread.start()
+    # Keep-alive serverni alohida oqimda ishga tushiramiz
+    threading.Thread(target=run_http_server, daemon=True).start()
+    print("Bot to'liq holda ishga tushdi...")
     
-    print("Bot va test tizimi to'liq holda ishga tushdi...")
-    
-    # Eski update'larni tozalab, pollingni boshlaymiz
+    # Eski webhooklarni tozalaymiz
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    
+    # Pollingni boshlaymiz
+    await dp.start_polling(bot)
 
 if __name__ == '__main__':
     asyncio.run(main())
