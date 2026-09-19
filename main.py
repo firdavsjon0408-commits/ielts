@@ -14,7 +14,7 @@ dp = Dispatcher()
 users_db = set()
 user_quiz_state = {}
 
-# A1 dan C1 gacha har biri 20 tadan test savollari bazasi
+# A1 dan C1 gacha har biri 20 tadan to'liq test savollari bazasi
 LEVEL_TESTS = {
     "A1": [
         {"q": "1. Choose the correct pronoun: '___ is a student.'", "options": ["He", "Him", "His", "Them"], "correct": 0},
@@ -175,11 +175,7 @@ async def callback_handler(callback: types.CallbackQuery):
             "q_index": 0,
             "score": 0
         }
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        await send_level_question(callback.message, user_id, session_id)
+        await send_level_question(callback.message, user_id, session_id, edit_mode=True)
         await callback.answer()
         
     elif data in ["coming_soon_1", "coming_soon_2"]:
@@ -197,7 +193,7 @@ async def callback_handler(callback: types.CallbackQuery):
         
         state = user_quiz_state.get(user_id)
         if not state or state.get("session_id") != btn_session:
-            await callback.answer("Bu eski tugma yoki boshqa sessiya testi. Iltimos, qaytadan urinib ko'ring.", show_alert=True)
+            await callback.answer("Bu test eskirgan yoki boshqa sessiya ochilgan. Iltimos, /start bosing.", show_alert=True)
             return
             
         level = state["level"]
@@ -209,11 +205,7 @@ async def callback_handler(callback: types.CallbackQuery):
         state["q_index"] += 1
         
         if state["q_index"] < len(questions):
-            try:
-                await callback.message.delete()
-            except Exception:
-                pass
-            await send_level_question(callback.message, user_id, state["session_id"])
+            await send_level_question(callback.message, user_id, state["session_id"], edit_mode=True)
         else:
             score = state["score"]
             total = len(questions)
@@ -223,21 +215,15 @@ async def callback_handler(callback: types.CallbackQuery):
             builder.row(types.InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data="level_tests_menu"))
             builder.row(types.InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="back_to_main"))
             
-            try:
-                await callback.message.delete()
-            except Exception:
-                pass
-                
-            # 18 tadan ko'p topsa (19 yoki 20 ta)
             if score > 18:
                 result_text = f"🎉 <b>Tabriklaymiz! Sizning darajangiz shu: {level}!</b>\n\n📊 To'g'ri javoblar: {score} / {total}"
             else:
                 result_text = f"❌ <b>Afsuski, yetarlicha ball to'play olmadingiz ({score}/{total}).</b>\n\nQayta urinib ko'ring! 🔄"
 
-            await callback.message.answer(result_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+            await callback.message.edit_text(result_text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await callback.answer()
 
-async def send_level_question(message: types.Message, user_id: int, session_id: float):
+async def send_level_question(message: types.Message, user_id: int, session_id: float, edit_mode: bool = False):
     state = user_quiz_state[user_id]
     level = state["level"]
     q_index = state["q_index"]
@@ -248,7 +234,11 @@ async def send_level_question(message: types.Message, user_id: int, session_id: 
         builder.row(types.InlineKeyboardButton(text=option, callback_data=f"ans_lvl_{idx}_{session_id}"))
         
     text = f"📊 <b>Daraja testi: {level}</b>\n\n<b>Savol ({q_index + 1}/{len(LEVEL_TESTS[level])}):</b>\n{q_data['q']}"
-    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    
+    if edit_mode:
+        await message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    else:
+        await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
 
 @dp.message(Command("broadcast"))
 async def broadcast_message(message: types.Message):
@@ -282,7 +272,7 @@ def run_http_server():
 
 async def main():
     threading.Thread(target=run_http_server, daemon=True).start()
-    print("Bot noldan qayta qurildi va ishga tushdi...")
+    print("Bot xatosiz tahrirlash usulida ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
