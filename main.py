@@ -197,16 +197,17 @@ async def callback_handler(callback: types.CallbackQuery):
         
         state = user_quiz_state.get(user_id)
         if not state:
-            await callback.answer("Test yakunlangan yoki eskirgan. Iltimos, /start bosing.", show_alert=True)
+            # Agar sessiya tugagan bo'lsa ham xatolik oynachasini chiqarmaymiz
+            await callback.answer()
             return
             
-        # Tez bosib yuborish (double-click) va race condition oldini olish uchun qulf
+        # Agar tugma tez-tez bosilsa, hech qanday xato bermasdan jim turadi
         if state.get("lock", False):
             await callback.answer()
             return
             
         if cb_q_index != state["q_index"]:
-            await callback.answer("Bu savolga allaqachon javob berilgan!", show_alert=False)
+            await callback.answer()
             return
             
         state["lock"] = True
@@ -290,7 +291,7 @@ def run_http_server():
 
 async def main():
     threading.Thread(target=run_http_server, daemon=True).start()
-    print("Test tizimi xatosiz qulf (lock) mexanizmi bilan ishga tushdi...")
+    print("Test tizimi to'liq optimallashtirildi va xatosiz ishlamoqda...")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
