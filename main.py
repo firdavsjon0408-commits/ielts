@@ -130,7 +130,6 @@ C1_QUESTIONS = [
     {"q": "20. Be that as it ..., we must accept the outcome.", "options": ["is", "may", "was", "were"], "correct": 1},
 ]
 
-# 10 ta IELTS Reading Mock bazasi (O'z holicha saqlandi)
 READING_MOCKS = {
 1: {
 "passage": "<b>IELTS Academic Reading - Mock 1: The Evolution of Architecture & Urban Design</b>\n\nArchitecture has transformed dramatically over the centuries, reflecting technological breakthroughs, cultural shifts, and environmental awareness. Modern skyscrapers utilize sustainable materials, smart energy grids, and advanced aerodynamic designs to withstand extreme weather conditions while optimizing interior climate control.",
@@ -387,6 +386,8 @@ READING_MOCKS = {
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
     users_db.add(message.from_user.id)
+    if message.from_user.id in user_quiz_state:
+        del user_quiz_state[message.from_user.id]
     builder = InlineKeyboardBuilder()
     builder.row(types.InlineKeyboardButton(text="📚 Mock testlar (For practice)", callback_data="mock_tests"))
     builder.row(types.InlineKeyboardButton(text="🎓 Darajalar bo'yicha (Grammar)", callback_data="levels_menu"))
@@ -400,6 +401,7 @@ async def start_cmd(message: types.Message):
 async def callback_handler(callback: types.CallbackQuery):
     data = callback.data
     user_id = callback.from_user.id
+    
     if data == "mock_tests":
         builder = InlineKeyboardBuilder()
         builder.row(types.InlineKeyboardButton(text="📖 IELTS Reading (10 ta mock)", callback_data="ielts_reading_list"))
@@ -411,14 +413,16 @@ async def callback_handler(callback: types.CallbackQuery):
         builder.row(types.InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main"))
         await callback.message.edit_text("📚 Mock testlar (For practice) bo'limini tanlang:", reply_markup=builder.as_markup())
         await callback.answer()
+        
     elif data == "ielts_reading_list":
         builder = InlineKeyboardBuilder()
         for i in range(1, 11):
             builder.add(types.InlineKeyboardButton(text=f"Mock {i}", callback_data=f"start_mock_ielts_{i}"))
         builder.adjust(2)
         builder.row(types.InlineKeyboardButton(text="🔙 Orqaga", callback_data="mock_tests"))
-        await callback.message.edit_text("📖 IELTS Reading mock testlaridan birini tanlang (1-10, har biri 20 tadan noyob savol):", reply_markup=builder.as_markup())
+        await callback.message.edit_text("📖 IELTS Reading mock testlaridan birini tanlang (1-10):", reply_markup=builder.as_markup())
         await callback.answer()
+        
     elif data.startswith("start_mock_ielts_"):
         mock_num = int(data.split("_")[3])
         user_quiz_state[user_id] = {
@@ -427,12 +431,17 @@ async def callback_handler(callback: types.CallbackQuery):
             "q_index": 0,
             "score": 0
         }
-        await callback.message.delete()
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
         await send_reading_question(callback.message, user_id)
         await callback.answer()
+        
     elif data in ["mock_listening", "soon_3", "soon_4", "soon_1", "soon_2", "analysis_soon"]:
         await callback.message.answer("⏳ Bu funksiya tez kunda ishga tushadi (Coming soon)...")
         await callback.answer()
+        
     elif data == "levels_menu":
         builder = InlineKeyboardBuilder()
         builder.row(types.InlineKeyboardButton(text="🟢 A1 darajasi (20 ta test)", callback_data="start_A1"))
@@ -443,7 +452,10 @@ async def callback_handler(callback: types.CallbackQuery):
         builder.row(types.InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main"))
         await callback.message.edit_text("Darajani tanlang:", reply_markup=builder.as_markup())
         await callback.answer()
+        
     elif data == "back_to_main":
+        if user_id in user_quiz_state:
+            del user_quiz_state[user_id]
         builder = InlineKeyboardBuilder()
         builder.row(types.InlineKeyboardButton(text="📚 Mock testlar (For practice)", callback_data="mock_tests"))
         builder.row(types.InlineKeyboardButton(text="🎓 Darajalar bo'yicha (Grammar)", callback_data="levels_menu"))
@@ -453,19 +465,26 @@ async def callback_handler(callback: types.CallbackQuery):
         )
         await callback.message.edit_text("Asosiy menyu:", reply_markup=builder.as_markup())
         await callback.answer()
+        
     elif data.startswith("start_") and not data.startswith("start_mock_"):
         level = data.split("_")[1]
         user_quiz_state[user_id] = {"mode": "grammar", "level": level, "q_index": 0, "score": 0}
-        await callback.message.delete()
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
         await send_grammar_question(callback.message, user_id)
         await callback.answer()
+        
     elif data.startswith("ans_"):
         if user_id not in user_quiz_state:
             await callback.message.answer("Test allaqachon tugagan yoki /start ni bosing.")
             await callback.answer()
             return
+            
         selected_option = int(data.split("_")[1])
         state = user_quiz_state[user_id]
+        
         if state["mode"] == "grammar":
             level = state["level"]
             q_index = state["q_index"]
@@ -474,15 +493,23 @@ async def callback_handler(callback: types.CallbackQuery):
             if selected_option == correct_option:
                 state["score"] += 1
             state["q_index"] += 1
+            
             if state["q_index"] < len(questions):
-                await callback.message.delete()
+                try:
+                    await callback.message.delete()
+                except Exception:
+                    pass
                 await send_grammar_question(callback.message, user_id)
             else:
                 score = state["score"]
                 total = len(questions)
                 del user_quiz_state[user_id]
-                await callback.message.delete()
+                try:
+                    await callback.message.delete()
+                except Exception:
+                    pass
                 await callback.message.answer(f"🎉 Test yakunlandi!\n\n✅ To'g'ri javoblar: {score} / {total}")
+                
         elif state["mode"] == "reading":
             mock_num = state["mock_num"]
             q_index = state["q_index"]
@@ -492,8 +519,12 @@ async def callback_handler(callback: types.CallbackQuery):
             if selected_option == correct_option:
                 state["score"] += 1
             state["q_index"] += 1
+            
             if state["q_index"] < len(questions):
-                await callback.message.delete()
+                try:
+                    await callback.message.delete()
+                except Exception:
+                    pass
                 await send_reading_question(callback.message, user_id)
             else:
                 score = state["score"]
@@ -502,7 +533,10 @@ async def callback_handler(callback: types.CallbackQuery):
                 builder = InlineKeyboardBuilder()
                 builder.row(types.InlineKeyboardButton(text="📊 Tahlil qilish (Coming Soon)", callback_data="analysis_soon"))
                 builder.row(types.InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="back_to_main"))
-                await callback.message.delete()
+                try:
+                    await callback.message.delete()
+                except Exception:
+                    pass
                 await callback.message.answer(
                     f"🎯 <b>IELTS Reading - Mock {mock_num} yakunlandi!</b>\n\n"
                     f"📊 Sizning natijangiz: {score} / {total} ta to'g'ri javob."
@@ -551,7 +585,6 @@ async def broadcast_message(message: types.Message):
             pass
     await message.answer(f"Xabar {count} ta foydalanuvchiga yuborildi!")
 
-# Render/Heroku kabi hostinglar uchun HTTP server funksiyasi
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -564,7 +597,6 @@ def run_http_server():
     server.serve_forever()
 
 async def main():
-    # HTTP serverni alohida oqimda (thread) ishga tushirish
     threading.Thread(target=run_http_server, daemon=True).start()
     print("Bot ishga tushdi va veb-server yoqildi...")
     await dp.start_polling(bot)
