@@ -106,12 +106,13 @@ async def check_essay(message: types.Message):
 
 # Asosiy ishga tushirish funksiyasi
 async def main():
-    # Keep-alive serverni alohida oqimda (thread) ishga tushiramiz
+    # Keep-alive serverni alohida oqimda ishga tushiramiz
     threading.Thread(target=run_http_server, daemon=True).start()
     print("Bot va test tizimi to'liq holda ishga tushdi...")
     
-    # Telegramdagi eski tiqilib qolgan so'rovlarni majburan tozalaymiz
-    await bot.delete_webhook(drop_pending_updates=True)
+    # Eski webhook va sessiyalarni tozalaymiz
+    session = bot.session
+    await session.close()
     
     await dp.start_polling(bot)
 
