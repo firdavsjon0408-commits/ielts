@@ -5,8 +5,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from groq import Groq
@@ -104,14 +102,16 @@ async def check_essay(message: types.Message):
             pass
         await message.answer("❌ Tahlil qilish vaqtida xatolik yuz berdi. Iltimos, birozdan keyin qayta urinib ko'ring.")
 
-# Asosiy ishga tushirish funksiyasi
 async def main():
-    # Keep-alive serverni alohida oqimda ishga tushiramiz
-    threading.Thread(target=run_http_server, daemon=True).start()
+    # HTTP serverni alohida oqimda ishga tushiramiz
+    server_thread = threading.Thread(target=run_http_server, daemon=True)
+    server_thread.start()
+    
     print("Bot va test tizimi to'liq holda ishga tushdi...")
     
-    # Pollingni ishga tushiramiz
-    await dp.start_polling(bot)
+    # Eski update'larni tozalab, pollingni boshlaymiz
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 if __name__ == '__main__':
     asyncio.run(main())
