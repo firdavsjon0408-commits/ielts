@@ -17,7 +17,7 @@ ADMIN_ID = 6773733838
 GROQ_API_KEY = "gsk_caFeIAfnef5RLTh83i79WGdyb3FYvTMAzgQZW0S..."
 
 # Groq mijoji
-groq_client = Groq(api_KEY=GROQ_API_KEY)
+groq_client = Groq(api_key=GROQ_API_KEY)
 
 # Logging
 logging.basicConfig(level=logging.INFO)
