@@ -172,7 +172,8 @@ async def callback_handler(callback: types.CallbackQuery):
         user_quiz_state[user_id] = {
             "level": level,
             "q_index": 0,
-            "score": 0
+            "score": 0,
+            "lock": False
         }
         await send_level_question(callback.message, user_id)
         await callback.answer()
@@ -186,10 +187,9 @@ async def callback_handler(callback: types.CallbackQuery):
         await callback.answer()
         
     elif data.startswith("ans_"):
-        # Format: ans_{q_index}_{option_idx}
         parts = data.split("_")
         if len(parts) < 3:
-            await callback.answer("Xatolik yuz berdi.", show_alert=True)
+            await callback.answer()
             return
             
         cb_q_index = int(parts[1])
@@ -197,40 +197,48 @@ async def callback_handler(callback: types.CallbackQuery):
         
         state = user_quiz_state.get(user_id)
         if not state:
-        # If state doesn't exist, user might be clicking an old test
-            await callback.answer("Bu test yakunlangan yoki eskirgan. Iltimos, /start bosing.", show_alert=True)
+            await callback.answer("Test yakunlangan yoki eskirgan. Iltimos, /start bosing.", show_alert=True)
+            return
+            
+        # Tez bosib yuborish (double-click) va race condition oldini olish uchun qulf
+        if state.get("lock", False):
+            await callback.answer()
             return
             
         if cb_q_index != state["q_index"]:
-            await callback.answer("Bu eski savol! Iltimos, joriy savolga javob bering.", show_alert=True)
+            await callback.answer("Bu savolga allaqachon javob berilgan!", show_alert=False)
             return
             
-        level = state["level"]
-        questions = LEVEL_TESTS[level]
-        
-        # Check answer
-        if selected_option == questions[cb_q_index]["correct"]:
-            state["score"] += 1
+        state["lock"] = True
+        try:
+            level = state["level"]
+            questions = LEVEL_TESTS[level]
             
-        state["q_index"] += 1
-        
-        if state["q_index"] < len(questions):
-            await send_level_question(callback.message, user_id)
-        else:
-            score = state["score"]
-            total = len(questions)
-            user_quiz_state.pop(user_id, None)
+            if selected_option == questions[cb_q_index]["correct"]:
+                state["score"] += 1
+                
+            state["q_index"] += 1
             
-            builder = InlineKeyboardBuilder()
-            builder.row(types.InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data="level_tests_menu"))
-            builder.row(types.InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="back_to_main"))
-            
-            if score > 18:
-                result_text = f"🎉 <b>Tabriklaymiz! Sizning darajangiz shu: {level}!</b>\n\n📊 To'g'ri javoblar: {score} / {total}"
+            if state["q_index"] < len(questions):
+                await send_level_question(callback.message, user_id)
             else:
-                result_text = f"❌ <b>Afsuski, yetarlicha ball to'play olmadingiz ({score}/{total}).</b>\n\nQayta urinib ko'ring! 🔄"
+                score = state["score"]
+                total = len(questions)
+                user_quiz_state.pop(user_id, None)
+                
+                builder = InlineKeyboardBuilder()
+                builder.row(types.InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data="level_tests_menu"))
+                builder.row(types.InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="back_to_main"))
+                
+                if score > 18:
+                    result_text = f"🎉 <b>Tabriklaymiz! Sizning darajangiz shu: {level}!</b>\n\n📊 To'g'ri javoblar: {score} / {total}"
+                else:
+                    result_text = f"❌ <b>Afsuski, yetarlicha ball to'play olmadingiz ({score}/{total}).</b>\n\nQayta urinib ko'ring! 🔄"
 
-            await callback.message.edit_text(result_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+                await callback.message.edit_text(result_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        finally:
+            state["lock"] = False
+            
         await callback.answer()
 
 async def send_level_question(message: types.Message, user_id: int):
@@ -241,11 +249,14 @@ async def send_level_question(message: types.Message, user_id: int):
     
     builder = InlineKeyboardBuilder()
     for idx, option in enumerate(q_data["options"]):
-        # Callback data ichida savol raqami (q_index) aniq yoziladi
         builder.row(types.InlineKeyboardButton(text=option, callback_data=f"ans_{q_index}_{idx}"))
         
     text = f"📊 <b>Daraja testi: {level}</b>\n\n<b>Savol ({q_index + 1}/{len(LEVEL_TESTS[level])}):</b>\n{q_data['q']}"
-    await message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    
+    try:
+        await message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    except Exception:
+        pass
 
 @dp.message(Command("broadcast"))
 async def broadcast_message(message: types.Message):
@@ -279,7 +290,7 @@ def run_http_server():
 
 async def main():
     threading.Thread(target=run_http_server, daemon=True).start()
-    print("Test tizimi xatosiz va to'liq optimallashtirilib ishga tushdi...")
+    print("Test tizimi xatosiz qulf (lock) mexanizmi bilan ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
