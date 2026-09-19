@@ -9,7 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from groq import Groq
 
 # 1. Tokenlar va sozlamalar
-TOKEN = "8775259780:AAfmt4N-gfVfB1S3KKbrHOJ70ADDJfGQnQ"
+TOKEN = "8859239290:AAGmjuPB82BMDbEBaWh0kENkOZcTOgZiQiE"
 GROQ_API_KEY = "gsk_caFeIAfnef5RLTh83i79WGdyb3FYvTMAzgQZW0S..."
 
 # Groq mijoji
