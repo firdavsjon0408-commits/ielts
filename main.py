@@ -110,10 +110,7 @@ async def main():
     threading.Thread(target=run_http_server, daemon=True).start()
     print("Bot va test tizimi to'liq holda ishga tushdi...")
     
-    # Eski webhook va sessiyalarni tozalaymiz
-    session = bot.session
-    await session.close()
-    
+    # Pollingni ishga tushiramiz
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
