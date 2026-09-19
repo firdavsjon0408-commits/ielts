@@ -1,18 +1,38 @@
 import os
 import asyncio
+import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
+from groq import Groq
 
+# 1. Tokenlar va sozlamalar
 TOKEN = "8775259780:AAE0Gym25W5ganATBHJT-f6EsBbNSC91grg"
 ADMIN_ID = 6773733838
+GROQ_API_KEY = "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"
 
+# Groq mijozi
+groq_client = Groq(api_key=GROQ_API_KEY)
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+
+# Bot va Dispatcher
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
+
 users_db = set()
 user_quiz_state = {}
+
+# Holatlar (FSM)
+class EssayState(StatesGroup):
+    waiting_for_essay = State()
 
 # A1 dan C1 gacha har biri 20 tadan to'liq test savollari bazasi
 LEVEL_TESTS = {
@@ -128,24 +148,136 @@ LEVEL_TESTS = {
     ]
 }
 
+# Asosiy menyu (Reply keyboard)
 def get_main_menu():
-    builder = InlineKeyboardBuilder()
-    builder.row(types.InlineKeyboardButton(text="📊 Daraja testlari (A1-C1)", callback_data="level_tests_menu"))
-    builder.row(
-        types.InlineKeyboardButton(text="🚀 Coming Soon 1", callback_data="coming_soon_1"),
-        types.InlineKeyboardButton(text="🚀 Coming Soon 2", callback_data="coming_soon_2")
-    )
-    return builder.as_markup()
+    builder = ReplyKeyboardBuilder()
+    builder.button(text="📊 Daraja testlari (A1-C1)")
+    builder.button(text="✍️ IELTS Essay Checker")
+    builder.button(text="🚀 Coming Soon 2")
+    builder.adjust(1)
+    return builder.as_markup(resize_keyboard=True)
 
 @dp.message(Command("start"))
-async def start_cmd(message: types.Message):
+async def start_cmd(message: types.Message, state: FSMContext):
     users_db.add(message.from_user.id)
+    await state.clear()
     user_quiz_state.pop(message.from_user.id, None)
     await message.answer(
         "Salom! Botimizga xush kelibsiz. Quyidagi menyudan kerakli bo'limni tanlang:",
         reply_markup=get_main_menu()
     )
 
+# "📊 Daraja testlari (A1-C1)" tugmasi bosilganda
+@dp.message(F.text == "📊 Daraja testlari (A1-C1)")
+async def open_level_tests(message: types.Message, state: FSMContext):
+    await state.clear()
+    user_quiz_state.pop(message.from_user.id, None)
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        types.InlineKeyboardButton(text="A1 Level", callback_data="start_level_A1"),
+        types.InlineKeyboardButton(text="A2 Level", callback_data="start_level_A2")
+    )
+    builder.row(
+        types.InlineKeyboardButton(text="B1 Level", callback_data="start_level_B1"),
+        types.InlineKeyboardButton(text="B2 Level", callback_data="start_level_B2")
+    )
+    builder.row(types.InlineKeyboardButton(text="C1 Level", callback_data="start_level_C1"))
+    await message.answer("📊 O'zingizga mos darajadagi testni tanlang (20 ta savol):", reply_markup=builder.as_markup())
+
+# "✍️ IELTS Essay Checker" tugmasi bosilganda
+@dp.message(F.text == "✍️ IELTS Essay Checker")
+async def start_essay_check(message: types.Message, state: FSMContext):
+    await state.set_state(EssayState.waiting_for_essay)
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ Bekor qilish", callback_data="cancel_essay")
+    await message.answer(
+        "✍️ **IELTS Essay Checker** bo'limiga xush kelibsiz!\n\n"
+        "Iltimos, tekshirilishi kerak bo'lgan IELTS Essay (Task 1 yoki Task 2) matnini shu yerga yuboring:",
+        reply_markup=builder.as_markup()
+    )
+
+@dp.message(F.text == "🚀 Coming Soon 2")
+async def coming_soon_handler(message: types.Message):
+    await message.answer("⚠️ Bu bo'lim tez kunda ochiladi!")
+
+# Inshoni bekor qilish
+@dp.callback_query(F.data == "cancel_essay")
+async def cancel_essay_process(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    try:
+        await callback.message.edit_text("❌ Insho tekshirish bekor qilindi.")
+    except:
+        pass
+    await callback.message.answer("Asosiy menyuga qaytdingiz:", reply_markup=get_main_menu())
+    await callback.answer()
+
+# Insho matnini qabul qilib Groq orqali tekshirish
+@dp.message(EssayState.waiting_for_essay)
+async def process_essay_text(message: types.Message, state: FSMContext):
+    essay_text = message.text
+    
+    if len(essay_text.strip()) < 20:
+        await message.answer("⚠️ Matn juda qisqa. Iltimos, to'liqroq IELTS essay matnini yuboring:")
+        return
+
+    wait_msg = await message.answer("⏳ Inshongiz o'qilmoqda va sun'iy intellekt tomonidan 4 ta IELTS mezoni asosida tahlil qilinmoqda, biroz kuting...")
+
+    try:
+        prompt = f"""
+Siz professional IELTS ekzamenorisiz (Examiner). Foydalanuvchi yuborgan quyidagi inshoni (Essay) 4 ta rasmiy IELTS mezoni bo'yicha qattiqqo'llik bilan tekshiring:
+1. Task Response (Savolga javob berish darajasi)
+2. Coherence and Cohesion (Mantiqiy bog'liqlik, abzatslar)
+3. Lexical Resource (So'z boyligi, sinonimlar)
+4. Grammatical Range and Accuracy (Grammatik xatolar)
+
+Insho matni:
+""" + essay_text + """
+
+Javobni quyidagi strukturada, aniq va chiroyli o'zbek tilida (baholar ingliz tilidagi mezon nomlari bilan) berib chiqing:
+- **Taxminiy Band Score:** (masalan, Band 6.5)
+- **Task Response bo'yicha fikr:** (...)
+- **Coherence & Cohesion bo'yicha fikr:** (...)
+- **Lexical Resource bo'yicha fikr va yaxshiroq so'zlar:** (...)
+- **Grammar & Xatolar:** (Topilgan asosiy grammatik va imlo xatolar, ularning to'g'ri variantlari)
+- **Inshoni yaxshilash uchun umumiy maslahat:** (...)
+"""
+
+        completion = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "Siz tajribali va adolatli IELTS imtihon oluvchisisiz."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=2048
+        )
+        
+        result_text = completion.choices[0].message.content
+
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=wait_msg.message_id)
+        except:
+            pass
+        
+        await message.answer(
+            f"📊 **IELTS ESSAY TAHLILI:**\n\n{result_text}",
+            reply_markup=get_main_menu()
+        )
+        await state.clear()
+
+    except Exception as e:
+        logging.error(f"Xatolik yuz berdi: {e}")
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=wait_msg.message_id)
+        except:
+            pass
+        await message.answer(
+            "❌ Tahlil qilish vaqtida xatolik yuz berdi. Iltimos, birozdan keyin qayta urinib ko'ring.",
+            reply_markup=get_main_menu()
+        )
+        await state.clear()
+
+# Callback handler (Testlar uchun)
 @dp.callback_query()
 async def callback_handler(callback: types.CallbackQuery):
     data = callback.data
@@ -163,7 +295,6 @@ async def callback_handler(callback: types.CallbackQuery):
             types.InlineKeyboardButton(text="B2 Level", callback_data="start_level_B2")
         )
         builder.row(types.InlineKeyboardButton(text="C1 Level", callback_data="start_level_C1"))
-        builder.row(types.InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="back_to_main"))
         await callback.message.edit_text("📊 O'zingizga mos darajadagi testni tanlang (20 ta savol):", reply_markup=builder.as_markup())
         await callback.answer()
         
@@ -178,14 +309,6 @@ async def callback_handler(callback: types.CallbackQuery):
         await send_level_question(callback.message, user_id)
         await callback.answer()
         
-    elif data in ["coming_soon_1", "coming_soon_2"]:
-        await callback.answer("⚠️ Bu bo'lim tez kunda ochiladi!", show_alert=True)
-        
-    elif data == "back_to_main":
-        user_quiz_state.pop(user_id, None)
-        await callback.message.edit_text("Asosiy menyu:", reply_markup=get_main_menu())
-        await callback.answer()
-        
     elif data.startswith("ans_"):
         parts = data.split("_")
         if len(parts) < 3:
@@ -197,11 +320,9 @@ async def callback_handler(callback: types.CallbackQuery):
         
         state = user_quiz_state.get(user_id)
         if not state:
-            # Agar sessiya tugagan bo'lsa ham xatolik oynachasini chiqarmaymiz
             await callback.answer()
             return
             
-        # Agar tugma tez-tez bosilsa, hech qanday xato bermasdan jim turadi
         if state.get("lock", False):
             await callback.answer()
             return
@@ -229,7 +350,6 @@ async def callback_handler(callback: types.CallbackQuery):
                 
                 builder = InlineKeyboardBuilder()
                 builder.row(types.InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data="level_tests_menu"))
-                builder.row(types.InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="back_to_main"))
                 
                 if score > 18:
                     result_text = f"🎉 <b>Tabriklaymiz! Sizning darajangiz shu: {level}!</b>\n\n📊 To'g'ri javoblar: {score} / {total}"
@@ -278,11 +398,12 @@ async def broadcast_message(message: types.Message):
             pass
     await message.answer(f"Xabar {count} ta foydalanuvchiga yuborildi!")
 
+# Railway uchun HTTP server
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot is running successfully!")
+        self.wfile.write(b"Bot is running successfully on Railway!")
 
 def run_http_server():
     port = int(os.environ.get("PORT", 8080))
@@ -291,7 +412,7 @@ def run_http_server():
 
 async def main():
     threading.Thread(target=run_http_server, daemon=True).start()
-    print("Test tizimi to'liq optimallashtirildi va xatosiz ishlamoqda...")
+    print("Bot va test tizimi to'liq holda ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
