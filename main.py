@@ -478,8 +478,8 @@ async def callback_handler(callback: types.CallbackQuery):
         
     elif data.startswith("ans_"):
         if user_id not in user_quiz_state:
-            await callback.message.answer("Test allaqachon tugagan yoki /start ni bosing.")
-            await callback.answer()
+            # Eski tugma bosilganda xato chiqib to'xtab qolmasligi uchun /start ga yo'naltiramiz yoki xabar beramiz
+            await callback.answer("Test yakunlangan yoki yangi sessiya boshlandi. /start buyrug'ini bosing.", show_alert=True)
             return
             
         selected_option = int(data.split("_")[1])
