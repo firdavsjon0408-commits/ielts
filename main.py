@@ -386,8 +386,7 @@ READING_MOCKS = {
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
     users_db.add(message.from_user.id)
-    if message.from_user.id in user_quiz_state:
-        del user_quiz_state[message.from_user.id]
+    user_quiz_state[message.from_user.id] = {"session_id": asyncio.get_event_loop().time()}
     builder = InlineKeyboardBuilder()
     builder.row(types.InlineKeyboardButton(text="📚 Mock testlar (For practice)", callback_data="mock_tests"))
     builder.row(types.InlineKeyboardButton(text="🎓 Darajalar bo'yicha (Grammar)", callback_data="levels_menu"))
@@ -425,7 +424,9 @@ async def callback_handler(callback: types.CallbackQuery):
         
     elif data.startswith("start_mock_ielts_"):
         mock_num = int(data.split("_")[3])
+        session_id = asyncio.get_event_loop().time()
         user_quiz_state[user_id] = {
+            "session_id": session_id,
             "mode": "reading",
             "mock_num": mock_num,
             "q_index": 0,
@@ -435,7 +436,7 @@ async def callback_handler(callback: types.CallbackQuery):
             await callback.message.delete()
         except Exception:
             pass
-        await send_reading_question(callback.message, user_id)
+        await send_reading_question(callback.message, user_id, session_id)
         await callback.answer()
         
     elif data in ["mock_listening", "soon_3", "soon_4", "soon_1", "soon_2", "analysis_soon"]:
@@ -454,8 +455,7 @@ async def callback_handler(callback: types.CallbackQuery):
         await callback.answer()
         
     elif data == "back_to_main":
-        if user_id in user_quiz_state:
-            del user_quiz_state[user_id]
+        user_quiz_state[user_id] = {"session_id": asyncio.get_event_loop().time()}
         builder = InlineKeyboardBuilder()
         builder.row(types.InlineKeyboardButton(text="📚 Mock testlar (For practice)", callback_data="mock_tests"))
         builder.row(types.InlineKeyboardButton(text="🎓 Darajalar bo'yicha (Grammar)", callback_data="levels_menu"))
@@ -468,23 +468,35 @@ async def callback_handler(callback: types.CallbackQuery):
         
     elif data.startswith("start_") and not data.startswith("start_mock_"):
         level = data.split("_")[1]
-        user_quiz_state[user_id] = {"mode": "grammar", "level": level, "q_index": 0, "score": 0}
+        session_id = asyncio.get_event_loop().time()
+        user_quiz_state[user_id] = {
+            "session_id": session_id,
+            "mode": "grammar",
+            "level": level,
+            "q_index": 0,
+            "score": 0
+        }
         try:
             await callback.message.delete()
         except Exception:
             pass
-        await send_grammar_question(callback.message, user_id)
+        await send_grammar_question(callback.message, user_id, session_id)
         await callback.answer()
         
     elif data.startswith("ans_"):
-        if user_id not in user_quiz_state:
-            # Eski tugma bosilganda xato chiqib to'xtab qolmasligi uchun /start ga yo'naltiramiz yoki xabar beramiz
-            await callback.answer("Test yakunlangan yoki yangi sessiya boshlandi. /start buyrug'ini bosing.", show_alert=True)
+        parts = data.split("_")
+        selected_option = int(parts[1])
+        btn_session = float(parts[2]) if len(parts) > 2 else 0.0
+        
+        state = user_quiz_state.get(user_id)
+        if not state or state.get("session_id") != btn_session:
+            await callback.answer("Bu eski tugma yoki boshqa sessiya testi. Iltimos, /start bosing.", show_alert=True)
             return
             
-        selected_option = int(data.split("_")[1])
-        state = user_quiz_state[user_id]
-        
+        if "mode" not in state:
+            await callback.answer("Sessiya topilmadi. /start buyrug'ini bosing.", show_alert=True)
+            return
+            
         if state["mode"] == "grammar":
             level = state["level"]
             q_index = state["q_index"]
@@ -499,11 +511,11 @@ async def callback_handler(callback: types.CallbackQuery):
                     await callback.message.delete()
                 except Exception:
                     pass
-                await send_grammar_question(callback.message, user_id)
+                await send_grammar_question(callback.message, user_id, state["session_id"])
             else:
                 score = state["score"]
                 total = len(questions)
-                del user_quiz_state[user_id]
+                user_quiz_state[user_id] = {"session_id": asyncio.get_event_loop().time()}
                 try:
                     await callback.message.delete()
                 except Exception:
@@ -525,11 +537,11 @@ async def callback_handler(callback: types.CallbackQuery):
                     await callback.message.delete()
                 except Exception:
                     pass
-                await send_reading_question(callback.message, user_id)
+                await send_reading_question(callback.message, user_id, state["session_id"])
             else:
                 score = state["score"]
                 total = len(questions)
-                del user_quiz_state[user_id]
+                user_quiz_state[user_id] = {"session_id": asyncio.get_event_loop().time()}
                 builder = InlineKeyboardBuilder()
                 builder.row(types.InlineKeyboardButton(text="📊 Tahlil qilish (Coming Soon)", callback_data="analysis_soon"))
                 builder.row(types.InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="back_to_main"))
@@ -543,7 +555,7 @@ async def callback_handler(callback: types.CallbackQuery):
                     , reply_markup=builder.as_markup(), parse_mode="HTML")
         await callback.answer()
 
-async def send_grammar_question(message: types.Message, user_id: int):
+async def send_grammar_question(message: types.Message, user_id: int, session_id: float):
     state = user_quiz_state[user_id]
     level = state["level"]
     q_index = state["q_index"]
@@ -551,10 +563,10 @@ async def send_grammar_question(message: types.Message, user_id: int):
     q_data = questions[q_index]
     builder = InlineKeyboardBuilder()
     for idx, option in enumerate(q_data["options"]):
-        builder.row(types.InlineKeyboardButton(text=option, callback_data=f"ans_{idx}"))
+        builder.row(types.InlineKeyboardButton(text=option, callback_data=f"ans_{idx}_{session_id}"))
     await message.answer(f"<b>{level} Daraja testi ({q_index + 1}/20)</b>\n\n{q_data['q']}", reply_markup=builder.as_markup(), parse_mode="HTML")
 
-async def send_reading_question(message: types.Message, user_id: int):
+async def send_reading_question(message: types.Message, user_id: int, session_id: float):
     state = user_quiz_state[user_id]
     mock_num = state["mock_num"]
     q_index = state["q_index"]
@@ -562,7 +574,7 @@ async def send_reading_question(message: types.Message, user_id: int):
     q_data = mock_data["questions"][q_index]
     builder = InlineKeyboardBuilder()
     for idx, option in enumerate(q_data["options"]):
-        builder.row(types.InlineKeyboardButton(text=option, callback_data=f"ans_{idx}"))
+        builder.row(types.InlineKeyboardButton(text=option, callback_data=f"ans_{idx}_{session_id}"))
     text = f"📖 <b>IELTS Reading - Mock {mock_num}</b>\n\n{mock_data['passage']}\n\n-------------------\n<b>Question ({q_index + 1}/20):</b>\n{q_data['q']}"
     await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
 
