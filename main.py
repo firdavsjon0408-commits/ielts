@@ -12,7 +12,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from groq import Groq
 
 # 1. Tokenlar va sozlamalar
-TOKEN = "8775259780:AAE0Gym25W5ganATBHJT-f6EsBbNSC91grg"
+TOKEN = "8775259780:AAFmt4N-gfVfsB1S3KKbrHOJ70ADDJfGQnQ"
 ADMIN_ID = 6773733838
 GROQ_API_KEY = "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"
 
